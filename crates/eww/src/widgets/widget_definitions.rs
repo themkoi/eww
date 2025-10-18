@@ -446,7 +446,7 @@ const WIDGET_NAME_SCALE: &str = "scale";
 /// @widget scale extends range, orientable
 /// @desc A slider.
 fn build_gtk_scale(bargs: &mut BuilderArgs) -> Result<gtk::Scale> {
-    let gtk_widget = gtk::Scale::new(gtk::Orientation::Horizontal, None::<&gtk::Adjustment>);
+    let gtk_widget = gtk::Scale::new(gtk::Orientation::Horizontal, Some(&gtk::Adjustment::new(0.0, 0.0, 100.0, 1.0, 1.0, 1.0)));
 
     let scroll_accum = std::rc::Rc::new(std::cell::RefCell::new(0.0));
     let last_scroll = std::rc::Rc::new(std::cell::RefCell::new(None::<std::time::Instant>));
