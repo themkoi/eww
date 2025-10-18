@@ -224,7 +224,8 @@ pub(super) fn resolve_widget_attrs(bargs: &mut BuilderArgs, gtk_widget: &gtk::Wi
     });
     Ok(())
 }
-
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+static INHIBIT_VALUE_CHANGED: AtomicBool = AtomicBool::new(false);
 /// @widget !range
 pub(super) fn resolve_range_attrs(bargs: &mut BuilderArgs, gtk_widget: &gtk::Range) -> Result<()> {
     gtk_widget.set_sensitive(false);
@@ -265,6 +266,9 @@ pub(super) fn resolve_range_attrs(bargs: &mut BuilderArgs, gtk_widget: &gtk::Ran
             gtk_widget.add_events(gdk::EventMask::PROPERTY_CHANGE_MASK);
             let last_set_value = last_set_value_clone.clone();
             connect_signal_handler!(gtk_widget, gtk_widget.connect_value_changed(move |gtk_widget| {
+    if INHIBIT_VALUE_CHANGED.load(AtomicOrdering::SeqCst) {
+        return; // ignore programmatic changes
+    }
                 let value = gtk_widget.value();
                 if last_set_value.borrow_mut().take() != Some(value) {
                     run_command(timeout, &onchange, &[value]);
@@ -442,30 +446,77 @@ const WIDGET_NAME_SCALE: &str = "scale";
 /// @widget scale extends range, orientable
 /// @desc A slider.
 fn build_gtk_scale(bargs: &mut BuilderArgs) -> Result<gtk::Scale> {
-    let gtk_widget = gtk::Scale::new(gtk::Orientation::Horizontal, Some(&gtk::Adjustment::new(0.0, 0.0, 100.0, 1.0, 1.0, 1.0)));
+    let gtk_widget = gtk::Scale::new(gtk::Orientation::Horizontal, None::<&gtk::Adjustment>);
+
+    let scroll_accum = std::rc::Rc::new(std::cell::RefCell::new(0.0));
+    let last_scroll = std::rc::Rc::new(std::cell::RefCell::new(None::<std::time::Instant>));
+    let smoothing = 0.2;
+
+    {
+        let scroll_accum_clone = scroll_accum.clone();
+        let last_scroll_clone = last_scroll.clone();
+        gtk_widget.connect_scroll_event(move |widget, event| {
+            let now = std::time::Instant::now();
+            let mut last = last_scroll_clone.borrow_mut();
+
+            // throttle: ignore events that happen <5ms since last scroll
+            if last.map_or(false, |t| now.duration_since(t).as_millis() < 1) {
+                return true.into();
+            }
+
+            let adj = widget.adjustment();
+            let max_speed = 1.0;
+            let delta = match event.direction() {
+                gdk::ScrollDirection::Up => 1.0,
+                gdk::ScrollDirection::Down => -1.0,
+                gdk::ScrollDirection::Left | gdk::ScrollDirection::Right => 0.0,
+                gdk::ScrollDirection::Smooth => {
+                    let (_, dy) = event.delta();
+                    let mut accum = scroll_accum_clone.borrow_mut();
+                    *accum = *accum * (1.0 - smoothing) + dy * smoothing;
+                    (*accum).clamp(-max_speed, max_speed)
+                }
+                _ => 0.0,
+            };
+
+            let mut new_val = (adj.value() + delta).clamp(adj.lower(), adj.upper());
+            new_val = (new_val * 10.0).round() / 10.0;
+            adj.set_value(new_val);
+
+            // throttle redraws to ~16ms
+            if last.map_or(true, |t| now.duration_since(t).as_millis() >= 16) {
+                widget.queue_draw();
+            }
+
+            *last = Some(now);
+
+            return true.into();
+        });
+    }
 
     def_widget!(bargs, _g, gtk_widget, {
-        // @prop flipped - flip the direction
-        prop(flipped: as_bool) { gtk_widget.set_inverted(flipped) },
+                   prop(flipped: as_bool) { gtk_widget.set_inverted(flipped) },
+                   prop(marks: as_string) {
+                       gtk_widget.clear_marks();
+                       for mark in marks.split(',') {
+                           gtk_widget.add_mark(mark.trim().parse()?, gtk::PositionType::Bottom, None)
+                       }
+                   },
+                   prop(draw_value: as_bool = false) { gtk_widget.set_draw_value(draw_value) },
+                   prop(value_pos: as_string) { gtk_widget.set_value_pos(parse_position_type(&value_pos)?) },
+                   prop(round_digits: as_i32 = 1) { gtk_widget.set_round_digits(round_digits) },
+    prop(value: as_f64) {
+           let now = std::time::Instant::now();
+           let last = *last_scroll.borrow();
 
-        // @prop marks - draw marks
-        prop(marks: as_string) {
-            gtk_widget.clear_marks();
-            for mark in marks.split(',') {
-                gtk_widget.add_mark(mark.trim().parse()?, gtk::PositionType::Bottom, None)
-            }
-        },
+           if last.map_or(true, |t| now.duration_since(t).as_secs_f64() > 1.0) {
+            INHIBIT_VALUE_CHANGED.store(true, AtomicOrdering::SeqCst);
+               gtk_widget.set_value((value * 10.0).round() / 10.0);
+               INHIBIT_VALUE_CHANGED.store(false, AtomicOrdering::SeqCst);
+           }
+       }
+               });
 
-        // @prop draw-value - draw the value of the property
-        prop(draw_value: as_bool = false) { gtk_widget.set_draw_value(draw_value) },
-
-        // @prop value-pos - position of the drawn value. possible values: $position
-        prop(value_pos: as_string) { gtk_widget.set_value_pos(parse_position_type(&value_pos)?) },
-
-        // @prop round-digits - Sets the number of decimals to round the value to when it changes
-        prop(round_digits: as_i32 = 0) { gtk_widget.set_round_digits(round_digits) }
-
-    });
     Ok(gtk_widget)
 }
 

@@ -28,7 +28,7 @@ derive_more = { version = "1", features = [
 extend = "1.2"
 futures = "0.3.30"
 grass = "0.13.4"
-gtk = "0.18.1"
+gtk = "0.18.2"
 insta = "1.7"
 itertools = "0.13.0"
 jaq-core = "1.5.1"
