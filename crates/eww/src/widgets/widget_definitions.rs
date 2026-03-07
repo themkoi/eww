@@ -85,6 +85,7 @@ pub const BUILTIN_WIDGET_NAMES: &[&str] = &[
     WIDGET_NAME_OVERLAY,
     WIDGET_NAME_STACK,
     WIDGET_NAME_SYSTRAY,
+    WIDGET_NAME_DROPDOWN,
 ];
 
 /// widget definitions
@@ -115,6 +116,7 @@ pub(super) fn widget_use_to_gtk_widget(bargs: &mut BuilderArgs) -> Result<gtk::W
         WIDGET_NAME_OVERLAY => build_gtk_overlay(bargs)?.upcast(),
         WIDGET_NAME_STACK => build_gtk_stack(bargs)?.upcast(),
         WIDGET_NAME_SYSTRAY => build_systray(bargs)?.upcast(),
+        WIDGET_NAME_DROPDOWN => build_gtk_dropdown(bargs)?.upcast(),
         _ => {
             return Err(DiagError(gen_diagnostic! {
                 msg = format!("referenced unknown widget `{}`", bargs.widget_use.name),
@@ -1313,6 +1315,83 @@ fn build_circular_progress_bar(bargs: &mut BuilderArgs) -> Result<CircProg> {
         prop(clockwise: as_bool) { w.set_property("clockwise", clockwise); },
     });
     Ok(w)
+}
+
+const WIDGET_NAME_DROPDOWN: &str = "dropdown";
+/// @widget dropdown
+/// @desc A button that shows a floating menu with options.
+fn build_gtk_dropdown(bargs: &mut BuilderArgs) -> Result<gtk::ComboBoxText> {
+    let combo = gtk::ComboBoxText::new();
+    combo.show();
+
+    let commands_ref = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+    let enabled_ref = std::rc::Rc::new(std::cell::Cell::new(true));
+    let timeout_ref = std::rc::Rc::new(std::cell::Cell::new(std::time::Duration::from_millis(200)));
+
+    let commands_ref_p = commands_ref.clone();
+    let enabled_ref_p = enabled_ref.clone();
+    let timeout_ref_p = timeout_ref.clone();
+
+    def_widget!(bargs, _g, combo, {
+        prop(items: as_vec) {
+            combo.set_sensitive(false);
+            combo.remove_all();
+            for item in &items {
+                let item_str = item.replace("\"", "").replace("'", "").trim().to_string();
+                combo.append_text(&item_str);
+            }
+            if !items.is_empty() {
+                combo.set_active(Some(0));
+            }
+            combo.set_sensitive(true);
+        },
+
+        prop(commands: as_vec) {
+            *commands_ref_p.borrow_mut() = commands.iter().map(|v| v.to_string()).collect();
+        },
+
+        prop(enabled: as_bool = true) { enabled_ref_p.set(enabled); },
+        prop(timeout: as_duration = std::time::Duration::from_millis(200)) { timeout_ref_p.set(timeout); },
+    });
+
+    let commands_clone = commands_ref.clone();
+    let timeout_clone = timeout_ref.clone();
+
+    let is_internal_reset = std::cell::Cell::new(false);
+
+    connect_signal_handler!(
+        combo,
+        combo.connect_changed(move |c| {
+            use gtk::prelude::*;
+            let idx = c.active().unwrap_or(0);
+
+            if is_internal_reset.get() {
+                is_internal_reset.set(false);
+                return;
+            }
+
+            let commands = commands_clone.borrow();
+            if let Some(cmd_template) = commands.get(idx as usize) {
+                let clean_template = cmd_template.replace("\"", "").replace("'", "").trim().to_string();
+
+                log::info!("DEBUG: Executing index {}: {}", idx, clean_template);
+                run_command::<String>(timeout_clone.get(), &clean_template, &[]);
+            }
+
+            if idx > 0 {
+                is_internal_reset.set(true);
+                let c_weak = c.downgrade();
+                glib::idle_add_local(move || {
+                    if let Some(c) = c_weak.upgrade() {
+                        c.set_active(Some(0));
+                    }
+                    glib::ControlFlow::Break
+                });
+            }
+        })
+    );
+
+    Ok(combo)
 }
 
 const WIDGET_NAME_GRAPH: &str = "graph";
