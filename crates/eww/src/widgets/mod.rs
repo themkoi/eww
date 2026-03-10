@@ -17,26 +17,12 @@ fn run_command<T>(timeout: std::time::Duration, cmd: &str, args: &[T])
 where
     T: 'static + std::fmt::Display + Send + Sync + Clone,
 {
-    use wait_timeout::ChildExt;
     let cmd = replace_placeholders(cmd, args);
     std::thread::Builder::new()
         .name("command-execution-thread".to_string())
         .spawn(move || {
             log::debug!("Running command from widget [timeout: {}ms]: {}", timeout.as_millis(), cmd);
-            let child = Command::new("/bin/sh").arg("-c").arg(&cmd).spawn();
-            match child {
-                Ok(mut child) => match child.wait_timeout(timeout) {
-                    // child timed out
-                    Ok(None) => {
-                        log::error!("WARNING: command {} timed out", &cmd);
-                        let _ = child.kill();
-                        let _ = child.wait();
-                    }
-                    Err(err) => log::error!("Failed to execute command {}: {}", cmd, err),
-                    Ok(Some(_)) => {}
-                },
-                Err(err) => log::error!("Failed to launch child process: {}", err),
-            }
+            let _ = Command::new("/bin/sh").arg("-c").arg(&cmd).spawn();
         })
         .expect("Failed to start command-execution-thread");
 }
