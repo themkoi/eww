@@ -24,6 +24,7 @@ All notable changes to eww will be listed here, starting at changes since versio
 -  Render image widget at full resolution when display scaling is enabled (By: zane-weissman)
 
 ### Features
+- Use a lock file to determine if a daemon is already running, instead of pinging (By: paperluigis)
 - Add warning and docs for incompatible `:anchor` and `:exclusive` options
 - Add `eww poll` subcommand to force-poll a variable (By: kiana-S)
 - Add OnDemand support for focusable on wayland (By: GallowsDove)
