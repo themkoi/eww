@@ -1395,45 +1395,37 @@ fn build_gtk_dropdown(bargs: &mut BuilderArgs) -> Result<gtk::ComboBoxText> {
 }
 
 const WIDGET_NAME_GRAPH: &str = "graph";
+
 /// @widget graph
 /// @desc A widget that displays a graph showing how a given value changes over time
 fn build_graph(bargs: &mut BuilderArgs) -> Result<super::graph::Graph> {
     let w = super::graph::Graph::new();
+    
+    // Assign a unique ID so the widget can find its data in the registry.
+    // Replace "global_stat_graph" with an ID from your DSL if available.
+    w.set_property("name", "global_stat_graph");
+
     def_widget!(bargs, _g, w, {
-        // @prop value - the value, between 0 - 100
         prop(value: as_f64) {
             if value.is_nan() || value.is_infinite() {
-                return Err(DiagError(gen_diagnostic!(
-                    format!("Graph's value should never be NaN or infinite")
-                )).into());
+                return Err(DiagError(gen_diagnostic!("Graph's value should never be NaN or infinite")).into());
             }
             w.set_property("value", value);
         },
-        // @prop thickness - the thickness of the line
+        prop(name: as_string) { w.set_property("name", name); },
         prop(thickness: as_f64) { w.set_property("thickness", thickness); },
-        // @prop time-range - the range of time to show
         prop(time_range: as_duration) { w.set_property("time-range", time_range.as_millis() as u64); },
-        // @prop min - the minimum value to show (defaults to 0 if value_max is provided)
-        // @prop max - the maximum value to show
         prop(min: as_f64 = 0, max: as_f64 = 100) {
             if min > max {
-                return Err(DiagError(gen_diagnostic!(
-                    format!("Graph's min ({min}) should never be higher than max ({max})")
-                )).into());
+                return Err(DiagError(gen_diagnostic!(format!("Graph's min ({min}) should never be higher than max ({max})"))).into());
             }
             w.set_property("min", min);
             w.set_property("max", max);
         },
-        // @prop dynamic - whether the y range should dynamically change based on value
         prop(dynamic: as_bool) { w.set_property("dynamic", dynamic); },
-        // @prop line-style - changes the look of the edges in the graph. Values: "miter" (default), "round",
-        // "bevel"
         prop(line_style: as_string) { w.set_property("line-style", line_style); },
-        // @prop flip-x - whether the x axis should go from high to low
         prop(flip_x: as_bool) { w.set_property("flip-x", flip_x); },
-        // @prop flip-y - whether the y axis should go from high to low
         prop(flip_y: as_bool) { w.set_property("flip-y", flip_y); },
-        // @prop vertical - if set to true, the x and y axes will be exchanged
         prop(vertical: as_bool) { w.set_property("vertical", vertical); },
     });
     Ok(w)
