@@ -66,6 +66,7 @@ pub const BUILTIN_WIDGET_NAMES: &[&str] = &[
     WIDGET_NAME_TOOLTIP,
     WIDGET_NAME_CIRCULAR_PROGRESS,
     WIDGET_NAME_GRAPH,
+    WIDGET_NAME_GRAPH_COLLECTOR,
     WIDGET_NAME_TRANSFORM,
     WIDGET_NAME_SCALE,
     WIDGET_NAME_PROGRESS,
@@ -97,6 +98,7 @@ pub(super) fn widget_use_to_gtk_widget(bargs: &mut BuilderArgs) -> Result<gtk::W
         WIDGET_NAME_TOOLTIP => build_tooltip(bargs)?.upcast(),
         WIDGET_NAME_CIRCULAR_PROGRESS => build_circular_progress_bar(bargs)?.upcast(),
         WIDGET_NAME_GRAPH => build_graph(bargs)?.upcast(),
+        WIDGET_NAME_GRAPH_COLLECTOR => build_graph_collector(bargs)?.upcast(),
         WIDGET_NAME_TRANSFORM => build_transform(bargs)?.upcast(),
         WIDGET_NAME_SCALE => build_gtk_scale(bargs)?.upcast(),
         WIDGET_NAME_PROGRESS => build_gtk_progress(bargs)?.upcast(),
@@ -1394,23 +1396,67 @@ fn build_gtk_dropdown(bargs: &mut BuilderArgs) -> Result<gtk::ComboBoxText> {
     Ok(combo)
 }
 
+const WIDGET_NAME_GRAPH_COLLECTOR: &str = "graph-collector";
+
+/// @widget graph-collector
+/// @desc A non-visual widget that listens to a value and records it in the global registry
+fn build_graph_collector(bargs: &mut BuilderArgs) -> Result<gtk::Box> {
+    let gtk_widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    gtk_widget.set_no_show_all(true);
+
+    def_widget!(bargs, _g, gtk_widget, {
+        prop(name: as_string) { 
+            // 1. Clear any old ID classes (if any)
+            let context = gtk_widget.style_context();
+            for class in context.list_classes() {
+                if class.starts_with("graph_id_") {
+                    context.remove_class(&class);
+                }
+            }
+            // 2. Add our ID as a CSS class
+            context.add_class(&format!("graph_id_{}", name));
+        },
+        prop(value: as_f64) {
+            // 3. Find the class that starts with "graph_id_"
+            let context = gtk_widget.style_context();
+            let name = context.list_classes()
+                .into_iter()
+                .find(|c| c.starts_with("graph_id_"))
+                .map(|c| c.replace("graph_id_", ""));
+
+            if let Some(name) = name {
+                if !name.is_empty() {
+                    crate::widgets::graph::push_graph_data(&name, value);
+                }
+            }
+        },
+    });
+    Ok(gtk_widget)
+}
+
 const WIDGET_NAME_GRAPH: &str = "graph";
 
 /// @widget graph
 /// @desc A widget that displays a graph showing how a given value changes over time
 fn build_graph(bargs: &mut BuilderArgs) -> Result<super::graph::Graph> {
     let w = super::graph::Graph::new();
-    
+
     // Assign a unique ID so the widget can find its data in the registry.
     // Replace "global_stat_graph" with an ID from your DSL if available.
     w.set_property("name", "global_stat_graph");
 
     def_widget!(bargs, _g, w, {
         prop(value: as_f64) {
+            let name = w.name();
+                    if !name.is_empty() {
+            // This pushes data to the global registry, bypassing the widget
+            crate::widgets::graph::push_graph_data(&name, value);
+        }
             if value.is_nan() || value.is_infinite() {
                 return Err(DiagError(gen_diagnostic!("Graph's value should never be NaN or infinite")).into());
             }
             w.set_property("value", value);
+            
         },
         prop(name: as_string) { w.set_property("name", name); },
         prop(thickness: as_f64) { w.set_property("thickness", thickness); },
