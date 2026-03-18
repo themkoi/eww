@@ -181,7 +181,7 @@ impl WidgetImpl for GraphPriv {
         // Ensure we are looking at the correct registry state
         let name = self.name.borrow().clone();
         if !name.is_empty() {
-            let mut registry = GRAPH_REGISTRY.lock().unwrap();
+            let registry = GRAPH_REGISTRY.lock().unwrap();
             if let Some(state) = registry.get(&name) {
                 self.shared_state.replace(state.clone());
             }

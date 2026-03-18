@@ -24,6 +24,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
     marker::PhantomData,
+    process::Command,
     rc::Rc,
 };
 use tokio::sync::mpsc::UnboundedSender;
@@ -458,6 +459,11 @@ impl<B: DisplayBackend> App<B> {
                 None,
             )?;
 
+            if let Some(cmd) = &initiator.onopen {
+                log::info!("on open flag: {}", cmd);
+
+                let _ =  Command::new("sh").arg("-c").arg(cmd).envs(std::env::vars()).spawn();
+            }
             root_widget.style_context().add_class(window_name);
 
             let monitor = get_gdk_monitor(initiator.monitor.clone())?;
@@ -549,13 +555,14 @@ impl<B: DisplayBackend> App<B> {
         self.eww_config = config;
         self.scope_graph.borrow_mut().clear(self.eww_config.generate_initial_state()?);
 
-        let open_window_ids: Vec<String> =
-            self.open_windows.keys().cloned().chain(self.failed_windows.iter().cloned()).dedup().collect();
+        let open_window_ids: HashSet<String> =
+            self.open_windows.keys().cloned().chain(self.failed_windows.iter().cloned()).collect();
+
         for instance_id in &open_window_ids {
-            let window_arguments = self.instance_id_to_args.get(instance_id).with_context(|| {
-                format!("Cannot reopen window, initial parameters were not saved correctly for {instance_id}")
-            })?;
-            self.open_window(&window_arguments.clone())?;
+            if let Some(window_arguments) = self.instance_id_to_args.get(instance_id) {
+                let window_arguments = window_arguments.clone(); // <-- clone here
+                self.open_window(&window_arguments)?;
+            }
         }
         Ok(())
     }

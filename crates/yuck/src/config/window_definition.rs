@@ -39,6 +39,7 @@ pub struct WindowDefinition {
     pub monitor: Option<SimplExpr>,
     pub widget: WidgetUse,
     pub resizable: Option<SimplExpr>,
+    pub onopen: Option<SimplExpr>,
     pub backend_options: BackendWindowOptionsDef,
 }
 
@@ -56,6 +57,14 @@ impl WindowDefinition {
         Ok(match &self.resizable {
             Some(expr) => expr.eval(local_variables)?.as_bool()?,
             None => true,
+        })
+    }
+
+        /// Evaluate the `resizable` field of the window definition
+    pub fn eval_onopen(&self, local_variables: &HashMap<VarName, DynVal>) -> Result<String, EvalError> {
+        Ok(match &self.onopen {
+            Some(expr) => expr.eval(local_variables)?.as_string()?,
+            None => "".to_string(),
         })
     }
 
@@ -86,10 +95,11 @@ impl FromAstElementContent for WindowDefinition {
         let resizable = attrs.ast_optional("resizable")?;
         let stacking = attrs.ast_optional("stacking")?;
         let geometry = attrs.ast_optional("geometry")?;
+        let onopen = attrs.ast_optional("onopen")?;
         let backend_options = BackendWindowOptionsDef::from_attrs(&mut attrs)?;
         let widget = iter.expect_any().map_err(DiagError::from).and_then(WidgetUse::from_ast)?;
         iter.expect_done()?;
-        Ok(Self { name, expected_args, args_span, monitor, resizable, widget, stacking, geometry, backend_options })
+        Ok(Self { name, expected_args, args_span, monitor, resizable, widget, stacking, geometry, onopen, backend_options })
     }
 }
 

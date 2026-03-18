@@ -931,6 +931,7 @@ fn build_gtk_event_box(bargs: &mut BuilderArgs) -> Result<gtk::EventBox> {
         // @prop onhoverlost - event to execute when the user losts hovers over the widget
         prop(timeout: as_duration = Duration::from_millis(200), onhoverlost: as_string) {
             gtk_widget.add_events(gdk::EventMask::LEAVE_NOTIFY_MASK);
+            gtk_widget.add_events(gdk::EventMask::PROXIMITY_OUT_MASK);
             connect_signal_handler!(gtk_widget, gtk_widget.connect_leave_notify_event(move |_, evt| {
                 if evt.detail() != NotifyType::Inferior {
                     run_command(timeout, &onhoverlost, &[evt.position().0, evt.position().1]);
@@ -1552,6 +1553,8 @@ fn parse_stack_transition(t: &str) -> Result<gtk::StackTransitionType> {
         "slideleft" => gtk::StackTransitionType::SlideLeft,
         "slideup" => gtk::StackTransitionType::SlideUp,
         "slidedown" => gtk::StackTransitionType::SlideDown,
+        "slidevertical" => gtk::StackTransitionType::SlideUpDown,
+        "slidehorizontal" => gtk::StackTransitionType::SlideLeftRight,
         "fade" | "crossfade" => gtk::StackTransitionType::Crossfade,
         "none" => gtk::StackTransitionType::None,
     }

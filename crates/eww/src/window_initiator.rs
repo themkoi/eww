@@ -21,6 +21,7 @@ pub struct WindowInitiator {
     pub monitor: Option<MonitorIdentifier>,
     pub name: String,
     pub resizable: bool,
+    pub onopen: Option<String>,
     pub stacking: WindowStacking,
 }
 
@@ -40,6 +41,7 @@ impl WindowInitiator {
             name: window_def.name.clone(),
             resizable: window_def.eval_resizable(&vars)?,
             stacking: window_def.eval_stacking(&vars)?,
+            onopen: Some(window_def.eval_onopen(&vars)?),
             local_variables: vars,
         })
     }
