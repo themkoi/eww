@@ -11,7 +11,7 @@ use eww_shared_util::Spanned;
 
 use gdk::{ModifierType, NotifyType};
 use glib::translate::FromGlib;
-use gtk::{self, glib, prelude::*, DestDefaults, TargetEntry, TargetList};
+use gtk::{self, glib, prelude::*, Adjustment, DestDefaults, PolicyType, ScrolledWindow, TargetEntry, TargetList};
 use gtk::{cairo, gdk::ffi::gdk_cairo_surface_create_from_pixbuf};
 use gtk::{gdk, pango};
 use itertools::Itertools;
@@ -849,21 +849,41 @@ fn build_center_box(bargs: &mut BuilderArgs) -> Result<gtk::Box> {
     }
 }
 
-const WIDGET_NAME_SCROLL: &str = "scroll";
+pub const WIDGET_NAME_SCROLL: &str = "scroll";
+
 /// @widget scroll
 /// @desc a container with a single child that can scroll.
-fn build_gtk_scrolledwindow(bargs: &mut BuilderArgs) -> Result<gtk::ScrolledWindow> {
-    // I don't have single idea of what those two generics are supposed to be, but this works.
-    let gtk_widget = gtk::ScrolledWindow::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
+fn build_gtk_scrolledwindow(bargs: &mut BuilderArgs) -> Result<ScrolledWindow> {
+    let gtk_widget = ScrolledWindow::new(None::<&Adjustment>, None::<&Adjustment>);
+
+    gtk_widget.set_overlay_scrolling(true);
 
     def_widget!(bargs, _g, gtk_widget, {
-        // @prop hscroll - scroll horizontally
-        // @prop vscroll - scroll vertically
-        prop(hscroll: as_bool = true, vscroll: as_bool = true) {
+        prop(
+            hscroll: as_bool = true,
+            vscroll: as_bool = true,
+            show_scrollbar: as_bool = true
+        ) {
             gtk_widget.set_policy(
-                if hscroll { gtk::PolicyType::Automatic } else { gtk::PolicyType::Never },
-                if vscroll { gtk::PolicyType::Automatic } else { gtk::PolicyType::Never },
-            )
+                if hscroll { PolicyType::Automatic } else { PolicyType::Never },
+                if vscroll { PolicyType::Automatic } else { PolicyType::Never },
+            );
+
+            if !show_scrollbar {
+                gtk_widget.style_context().add_class("no-scrollbar");
+            }
+
+            if hscroll && !vscroll {
+                gtk_widget.connect_scroll_event(move |widget, event| {
+                    let hadj = widget.hadjustment();
+                    let delta_y = event.delta();
+                    let speed = 20.0;
+                    let new_val = (hadj.value() + delta_y.1 * speed)
+                        .clamp(hadj.lower(), hadj.upper() - hadj.page_size());
+                    hadj.set_value(new_val);
+                    true.into()
+                });
+            }
         },
     });
 
@@ -1406,7 +1426,7 @@ fn build_graph_collector(bargs: &mut BuilderArgs) -> Result<gtk::Box> {
     gtk_widget.set_no_show_all(true);
 
     def_widget!(bargs, _g, gtk_widget, {
-        prop(name: as_string) { 
+        prop(name: as_string) {
             // 1. Clear any old ID classes (if any)
             let context = gtk_widget.style_context();
             for class in context.list_classes() {
@@ -1457,7 +1477,7 @@ fn build_graph(bargs: &mut BuilderArgs) -> Result<super::graph::Graph> {
                 return Err(DiagError(gen_diagnostic!("Graph's value should never be NaN or infinite")).into());
             }
             w.set_property("value", value);
-            
+
         },
         prop(name: as_string) { w.set_property("name", name); },
         prop(thickness: as_f64) { w.set_property("thickness", thickness); },
